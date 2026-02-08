@@ -116,9 +116,11 @@ export default function StatusPage({ status, onRefresh }: StatusPageProps) {
                     </button>
                 </div>
                 <div className="space-y-3">
-                    <InfoRow label="命令前缀" value={config.commandPrefix} />
-                    <InfoRow label="冷却时间" value={`${config.cooldownSeconds} 秒`} />
                     <InfoRow label="调试模式" value={config.debug ? '开启' : '关闭'} />
+                    <InfoRow label="代理类型" value={config.proxyType || '未配置'} />
+                    {config.proxyType && (
+                        <InfoRow label="代理地址" value={`${config.proxyHost}:${config.proxyPort}`} />
+                    )}
                 </div>
             </div>
         </div>

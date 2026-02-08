@@ -74,20 +74,57 @@ export default function ConfigPage() {
                         checked={config.debug}
                         onChange={(v) => updateField('debug', v)}
                     />
-                    <InputRow
-                        label="命令前缀"
-                        desc="触发命令的前缀"
-                        value={config.commandPrefix}
-                        onChange={(v) => updateField('commandPrefix', v)}
+                </div>
+            </div>
+
+            {/* 代理配置 */}
+            <div className="card p-5 hover-lift">
+                <h3 className="text-sm font-semibold text-gray-900 dark:text-white flex items-center gap-2 mb-5">
+                    <IconTerminal size={16} className="text-gray-400" />
+                    代理设置
+                </h3>
+                <p className="text-xs text-gray-400 mb-4">中国大陆用户可能需要配置代理才能访问 Epic API</p>
+                <div className="space-y-5">
+                    <SelectRow
+                        label="代理类型"
+                        desc="选择代理协议类型"
+                        value={config.proxyType}
+                        options={[
+                            { label: '不使用代理', value: '' },
+                            { label: 'HTTP 代理', value: 'http' },
+                            { label: 'SOCKS5 代理', value: 'socks5' },
+                        ]}
+                        onChange={(v) => updateField('proxyType', v)}
                     />
-                    <InputRow
-                        label="冷却时间 (秒)"
-                        desc="同一命令请求冷却时间，0 表示不限制"
-                        value={String(config.cooldownSeconds)}
-                        type="number"
-                        onChange={(v) => updateField('cooldownSeconds', Number(v) || 0)}
-                    />
-                    {/* TODO: 在这里添加你的配置项 */}
+                    {config.proxyType && (
+                        <>
+                            <InputRow
+                                label="代理地址"
+                                desc="代理服务器地址"
+                                value={config.proxyHost}
+                                onChange={(v) => updateField('proxyHost', v)}
+                            />
+                            <InputRow
+                                label="代理端口"
+                                desc="代理服务器端口"
+                                value={String(config.proxyPort)}
+                                type="number"
+                                onChange={(v) => updateField('proxyPort', Number(v) || 7890)}
+                            />
+                            <InputRow
+                                label="代理用户名"
+                                desc="代理认证用户名（可选）"
+                                value={config.proxyUsername}
+                                onChange={(v) => updateField('proxyUsername', v)}
+                            />
+                            <InputRow
+                                label="代理密码"
+                                desc="代理认证密码（可选）"
+                                value={config.proxyPassword}
+                                onChange={(v) => updateField('proxyPassword', v)}
+                            />
+                        </>
+                    )}
                 </div>
             </div>
 
@@ -142,6 +179,28 @@ function InputRow({ label, desc, value, type = 'text', onChange }: {
                 onBlur={handleBlur}
                 onKeyDown={(e) => e.key === 'Enter' && handleBlur()}
             />
+        </div>
+    )
+}
+
+function SelectRow({ label, desc, value, options, onChange }: {
+    label: string; desc: string; value: string
+    options: { label: string; value: string }[]
+    onChange: (v: string) => void
+}) {
+    return (
+        <div>
+            <div className="text-sm font-medium text-gray-800 dark:text-gray-200 mb-1">{label}</div>
+            <div className="text-xs text-gray-400 mb-2">{desc}</div>
+            <select
+                className="input-field"
+                value={value}
+                onChange={(e) => onChange(e.target.value)}
+            >
+                {options.map((opt) => (
+                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                ))}
+            </select>
         </div>
     )
 }
