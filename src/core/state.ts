@@ -1,20 +1,14 @@
 /**
  * 全局状态管理模块（单例模式）
  *
- * 封装插件的配置持久化和运行时状态，提供在项目任意位置访问
- * ctx、config、logger 等对象的能力，无需逐层传递参数。
- *
- * 使用方法：
- *   import { pluginState } from '../core/state';
- *   pluginState.config.enabled;       // 读取配置
- *   pluginState.ctx.logger.info(...); // 使用日志
+ * 封装插件的配置持久化和运行时状态
  */
 
 import fs from 'fs';
 import path from 'path';
 import type { NapCatPluginContext, PluginLogger } from 'napcat-types/napcat-onebot/network/plugin/types';
 import { DEFAULT_CONFIG } from '../config';
-import type { PluginConfig, GroupConfig } from '../types';
+import type { PluginConfig, SchedulerData, SubscriptionData, PushHistoryData } from '../types';
 
 // ==================== 配置清洗工具 ====================
 
@@ -22,33 +16,19 @@ function isObject(v: unknown): v is Record<string, unknown> {
     return v !== null && typeof v === 'object' && !Array.isArray(v);
 }
 
-/**
- * 配置清洗函数
- * 确保从文件读取的配置符合预期类型，防止运行时错误
- */
+/** 配置清洗函数 */
 function sanitizeConfig(raw: unknown): PluginConfig {
-    if (!isObject(raw)) return { ...DEFAULT_CONFIG, groupConfigs: {} };
+    if (!isObject(raw)) return { ...DEFAULT_CONFIG };
 
-    const out: PluginConfig = { ...DEFAULT_CONFIG, groupConfigs: {} };
+    const out: PluginConfig = { ...DEFAULT_CONFIG };
 
     if (typeof raw.enabled === 'boolean') out.enabled = raw.enabled;
     if (typeof raw.debug === 'boolean') out.debug = raw.debug;
-    if (typeof raw.commandPrefix === 'string') out.commandPrefix = raw.commandPrefix;
-    if (typeof raw.cooldownSeconds === 'number') out.cooldownSeconds = raw.cooldownSeconds;
-
-    // 群配置清洗
-    if (isObject(raw.groupConfigs)) {
-        for (const [groupId, groupConfig] of Object.entries(raw.groupConfigs)) {
-            if (isObject(groupConfig)) {
-                const cfg: GroupConfig = {};
-                if (typeof groupConfig.enabled === 'boolean') cfg.enabled = groupConfig.enabled;
-                // TODO: 在这里添加你的群配置项清洗
-                out.groupConfigs[groupId] = cfg;
-            }
-        }
-    }
-
-    // TODO: 在这里添加你的配置项清洗逻辑
+    if (typeof raw.proxyType === 'string') out.proxyType = raw.proxyType;
+    if (typeof raw.proxyHost === 'string') out.proxyHost = raw.proxyHost;
+    if (typeof raw.proxyPort === 'number') out.proxyPort = raw.proxyPort;
+    if (typeof raw.proxyUsername === 'string') out.proxyUsername = raw.proxyUsername;
+    if (typeof raw.proxyPassword === 'string') out.proxyPassword = raw.proxyPassword;
 
     return out;
 }
@@ -56,82 +36,78 @@ function sanitizeConfig(raw: unknown): PluginConfig {
 // ==================== 插件全局状态类 ====================
 
 class PluginState {
-    /** NapCat 插件上下文（init 后可用） */
     private _ctx: NapCatPluginContext | null = null;
-
-    /** 插件配置 */
     config: PluginConfig = { ...DEFAULT_CONFIG };
-
-    /** 插件启动时间戳 */
     startTime: number = 0;
 
-    /** 运行时统计 */
-    stats = {
-        processed: 0,
-        todayProcessed: 0,
-        lastUpdateDay: new Date().toDateString(),
-    };
+    /** 活跃的定时器 Map: jobId -> NodeJS.Timeout */
+    timers: Map<string, ReturnType<typeof setInterval>> = new Map();
 
-    /** 获取上下文（确保已初始化） */
+    /** 获取上下文 */
     get ctx(): NapCatPluginContext {
         if (!this._ctx) throw new Error('PluginState 尚未初始化，请先调用 init()');
         return this._ctx;
     }
 
-    /** 获取日志器的快捷方式 */
+    /** 获取日志器 */
     get logger(): PluginLogger {
         return this.ctx.logger;
     }
 
     // ==================== 生命周期 ====================
 
-    /**
-     * 初始化（在 plugin_init 中调用）
-     */
     init(ctx: NapCatPluginContext): void {
         this._ctx = ctx;
         this.startTime = Date.now();
         this.loadConfig();
+        // 确保数据目录存在
+        this.ensureDataDir();
     }
 
-    /**
-     * 清理（在 plugin_cleanup 中调用）
-     */
     cleanup(): void {
+        // 清理所有定时器
+        for (const [jobId, timer] of this.timers) {
+            clearInterval(timer);
+            this.logger.debug(`(｡-ω-) 清理定时器: ${jobId}`);
+        }
+        this.timers.clear();
         this.saveConfig();
         this._ctx = null;
     }
 
+    // ==================== 数据目录 ====================
+
+    private ensureDataDir(): void {
+        const dataPath = this.ctx.dataPath;
+        if (!fs.existsSync(dataPath)) {
+            fs.mkdirSync(dataPath, { recursive: true });
+        }
+    }
+
+    private getDataFilePath(filename: string): string {
+        return path.join(this.ctx.dataPath, filename);
+    }
+
     // ==================== 配置管理 ====================
 
-    /**
-     * 从磁盘加载配置
-     */
     loadConfig(): void {
         const configPath = this.ctx.configPath;
         try {
             if (configPath && fs.existsSync(configPath)) {
                 const raw = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
                 this.config = sanitizeConfig(raw);
-                // 加载统计信息
-                if (isObject(raw) && isObject(raw.stats)) {
-                    Object.assign(this.stats, raw.stats);
-                }
-                this.ctx.logger.debug('已加载本地配置');
+                this.ctx.logger.debug('(｡·ω·｡) 已加载本地配置');
             } else {
-                this.config = { ...DEFAULT_CONFIG, groupConfigs: {} };
+                this.config = { ...DEFAULT_CONFIG };
                 this.saveConfig();
-                this.ctx.logger.debug('配置文件不存在，已创建默认配置');
+                this.ctx.logger.debug('(｡·ω·｡) 配置文件不存在，已创建默认配置');
             }
         } catch (error) {
-            this.ctx.logger.error('加载配置失败，使用默认配置:', error);
-            this.config = { ...DEFAULT_CONFIG, groupConfigs: {} };
+            this.ctx.logger.error('(╥﹏╥) 加载配置失败，使用默认配置:', error);
+            this.config = { ...DEFAULT_CONFIG };
         }
     }
 
-    /**
-     * 保存配置到磁盘
-     */
     saveConfig(): void {
         if (!this._ctx) return;
         const configPath = this._ctx.configPath;
@@ -140,71 +116,123 @@ class PluginState {
             if (!fs.existsSync(configDir)) {
                 fs.mkdirSync(configDir, { recursive: true });
             }
-            const data = { ...this.config, stats: this.stats };
-            fs.writeFileSync(configPath, JSON.stringify(data, null, 2), 'utf-8');
+            fs.writeFileSync(configPath, JSON.stringify(this.config, null, 2), 'utf-8');
         } catch (error) {
-            this._ctx.logger.error('保存配置失败:', error);
+            this._ctx.logger.error('(╥﹏╥) 保存配置失败:', error);
         }
     }
 
-    /**
-     * 合并更新配置
-     */
     updateConfig(partial: Partial<PluginConfig>): void {
         this.config = { ...this.config, ...partial };
         this.saveConfig();
     }
 
-    /**
-     * 完整替换配置
-     */
     replaceConfig(config: PluginConfig): void {
         this.config = sanitizeConfig(config);
         this.saveConfig();
     }
 
-    /**
-     * 更新指定群的配置
-     */
-    updateGroupConfig(groupId: string, config: Partial<GroupConfig>): void {
-        this.config.groupConfigs[groupId] = {
-            ...this.config.groupConfigs[groupId],
-            ...config,
-        };
-        this.saveConfig();
-    }
+    // ==================== 订阅数据管理 ====================
 
-    /**
-     * 检查群是否启用（默认启用，除非明确设置为 false）
-     */
-    isGroupEnabled(groupId: string): boolean {
-        return this.config.groupConfigs[groupId]?.enabled !== false;
-    }
-
-    // ==================== 统计 ====================
-
-    /**
-     * 增加处理计数
-     */
-    incrementProcessed(): void {
-        const today = new Date().toDateString();
-        if (this.stats.lastUpdateDay !== today) {
-            this.stats.todayProcessed = 0;
-            this.stats.lastUpdateDay = today;
+    /** 读取订阅数据 */
+    loadSubscriptions(): SubscriptionData {
+        const filePath = this.getDataFilePath('subscriptions.json');
+        try {
+            if (fs.existsSync(filePath)) {
+                return JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+            }
+        } catch (e) {
+            this.logger.warn('(；′⌒`) 读取订阅数据失败:', e);
         }
-        this.stats.todayProcessed++;
-        this.stats.processed++;
-        this.saveConfig();
+        return { 群聊: [], 私聊: [] };
+    }
+
+    /** 保存订阅数据 */
+    saveSubscriptions(data: SubscriptionData): void {
+        const filePath = this.getDataFilePath('subscriptions.json');
+        try {
+            fs.writeFileSync(filePath, JSON.stringify(data, null, 2), 'utf-8');
+        } catch (e) {
+            this.logger.error('(╥﹏╥) 保存订阅数据失败:', e);
+        }
+    }
+
+    // ==================== 定时任务配置管理 ====================
+
+    /** 读取定时任务配置 */
+    loadSchedulerData(): SchedulerData {
+        const filePath = this.getDataFilePath('scheduler.json');
+        try {
+            if (fs.existsSync(filePath)) {
+                return JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+            }
+        } catch (e) {
+            this.logger.warn('(；′⌒`) 读取定时任务配置失败:', e);
+        }
+        return {};
+    }
+
+    /** 保存定时任务配置 */
+    saveSchedulerData(data: SchedulerData): void {
+        const filePath = this.getDataFilePath('scheduler.json');
+        try {
+            fs.writeFileSync(filePath, JSON.stringify(data, null, 2), 'utf-8');
+        } catch (e) {
+            this.logger.error('(╥﹏╥) 保存定时任务配置失败:', e);
+        }
+    }
+
+    // ==================== 推送历史管理 ====================
+
+    /** 读取推送历史 */
+    loadPushHistory(): PushHistoryData {
+        const filePath = this.getDataFilePath('push_history.json');
+        try {
+            if (fs.existsSync(filePath)) {
+                return JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+            }
+        } catch (e) {
+            this.logger.warn('(；′⌒`) 读取推送历史失败:', e);
+        }
+        return {};
+    }
+
+    /** 保存推送历史 */
+    savePushHistory(data: PushHistoryData): void {
+        const filePath = this.getDataFilePath('push_history.json');
+        try {
+            fs.writeFileSync(filePath, JSON.stringify(data, null, 2), 'utf-8');
+        } catch (e) {
+            this.logger.error('(╥﹏╥) 保存推送历史失败:', e);
+        }
+    }
+
+    // ==================== 代理 ====================
+
+    /** 获取代理 URL（用于 fetch） */
+    getProxyUrl(): string | undefined {
+        const { proxyType, proxyHost, proxyPort, proxyUsername, proxyPassword } = this.config;
+        if (!proxyType || !proxyHost) return undefined;
+
+        const scheme = proxyType.toLowerCase();
+        if (scheme !== 'http' && scheme !== 'socks5') {
+            this.logger.warn('(;\u2032\u2312\u0060) 无效的代理类型: ' + proxyType);
+            return undefined;
+        }
+
+        const hostPort = proxyHost + ':' + proxyPort;
+        if (proxyUsername && proxyPassword) {
+            return scheme + '://' + proxyUsername + ':' + proxyPassword + '@' + hostPort;
+        }
+        return scheme + '://' + hostPort;
     }
 
     // ==================== 工具方法 ====================
 
-    /** 获取运行时长（毫秒） */
     getUptime(): number {
         return Date.now() - this.startTime;
     }
 
-    /** 获取格式化的运行时长 */
     getUptimeFormatted(): string {
         const ms = this.getUptime();
         const s = Math.floor(ms / 1000);

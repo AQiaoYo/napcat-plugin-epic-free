@@ -76,6 +76,7 @@ function copyAssetsPlugin() {
                         main: pkg.main,
                         description: pkg.description,
                         author: pkg.author,
+                        napcat: pkg.napcat,
                         dependencies: pkg.dependencies,
                     };
                     fs.writeFileSync(
@@ -121,5 +122,15 @@ export default defineConfig({
         },
         outDir: 'dist',
     },
-    plugins: [nodeResolve(), copyAssetsPlugin(), napcatHmrPlugin()],
+    plugins: [
+        nodeResolve(),
+        copyAssetsPlugin(),
+        napcatHmrPlugin({
+            webui: {
+                root: './src/webui',
+                distDir: './src/webui/dist',
+                targetDir: 'webui',
+            },
+        }),
+    ],
 });

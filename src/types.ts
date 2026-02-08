@@ -1,51 +1,97 @@
 /**
  * 类型定义文件
  * 定义插件内部使用的接口和类型
- *
- * 注意：OneBot 相关类型（OB11Message, OB11PostSendMsg 等）
- * 以及插件框架类型（NapCatPluginContext, PluginModule 等）
- * 均来自 napcat-types 包，无需在此重复定义。
  */
 
 // ==================== 插件配置 ====================
 
-/**
- * 插件主配置接口
- * 在此定义你的插件所需的所有配置项
- */
+/** 插件主配置接口 */
 export interface PluginConfig {
     /** 全局开关：是否启用插件功能 */
     enabled: boolean;
     /** 调试模式：启用后输出详细日志 */
     debug: boolean;
-    /** 触发命令前缀，默认为 #cmd */
-    commandPrefix: string;
-    /** 同一命令请求冷却时间（秒），0 表示不限制 */
-    cooldownSeconds: number;
-    /** 按群的单独配置 */
-    groupConfigs: Record<string, GroupConfig>;
-    // TODO: 在这里添加你的插件配置项
+    /** 代理类型：http / socks5 / 空表示不使用代理 */
+    proxyType: string;
+    /** 代理服务器地址 */
+    proxyHost: string;
+    /** 代理服务器端口 */
+    proxyPort: number;
+    /** 代理用户名（可选） */
+    proxyUsername: string;
+    /** 代理密码（可选） */
+    proxyPassword: string;
 }
 
-/**
- * 群配置
- */
-export interface GroupConfig {
-    /** 是否启用此群的功能 */
-    enabled?: boolean;
-    // TODO: 在这里添加群级别的配置项
+// ==================== Epic 游戏数据 ====================
+
+/** Epic API 返回的游戏数据 */
+export interface EpicGameRaw {
+    title: string;
+    description: string;
+    seller: { name: string };
+    keyImages: Array<{ type: string; url: string }>;
+    customAttributes: Array<{ key: string; value: string }>;
+    promotions?: {
+        promotionalOffers: Array<{
+            promotionalOffers: Array<{ endDate: string }>;
+        }>;
+        upcomingPromotionalOffers: Array<{
+            promotionalOffers: Array<{ endDate: string }>;
+        }>;
+    };
+    price: {
+        totalPrice: {
+            fmtPrice: {
+                originalPrice: string;
+                discountPrice: string;
+            };
+        };
+    };
+    url?: string;
+    offerMappings?: Array<{ pageSlug: string; pageType: string }>;
+    catalogNs?: { mappings?: Array<{ pageSlug: string; pageType: string }> };
+}
+
+/** 合并转发消息节点 */
+export interface ForwardNode {
+    type: 'node';
+    data: {
+        nickname: string;
+        user_id?: string;
+        content: Array<{ type: string; data: Record<string, unknown> }>;
+    };
+}
+
+// ==================== 订阅相关 ====================
+
+/** 订阅数据 */
+export interface SubscriptionData {
+    群聊: string[];
+    私聊: string[];
+}
+
+/** 定时任务配置 { jobId: "minute hour" } */
+export type SchedulerData = Record<string, string>;
+
+/** 推送历史指纹 { jobId: md5Hash } */
+export type PushHistoryData = Record<string, string>;
+
+/** 订阅信息 */
+export interface SubInfo {
+    sub_type: '群聊' | '私聊';
+    subject: string;
 }
 
 // ==================== API 响应 ====================
 
-/**
- * 统一 API 响应格式
- */
+/** 统一 API 响应格式 */
 export interface ApiResponse<T = unknown> {
-    /** 状态码，0 表示成功，-1 表示失败 */
     code: number;
-    /** 错误信息（仅错误时返回） */
     message?: string;
-    /** 响应数据（仅成功时返回） */
     data?: T;
 }
+
+\n// watch test
+// watch test 1770572250722
+// watch test 1770572300563

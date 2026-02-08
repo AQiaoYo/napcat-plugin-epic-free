@@ -1,4 +1,4 @@
-# Copilot Instructions for napcat-plugin-epic-free
+# Copilot Instructions for NapCat Plugin Template
 
 ## 目标
 
@@ -8,31 +8,7 @@
 
 ## 一句话概览
 
-这是一个面向 NapCat 的 Epic Games Store 喜加一推送插件（TypeScript，ESM），使用 Vite 打包到 `dist/index.mjs` 作为插件入口；提供免费游戏查询、定时推送、订阅管理等功能，含 WebUI 管理界面。
-
----
-
-## 功能概览
-
-本插件参考了 [nonebot-plugin-epicfree](https://github.com/FlanChanXwO/nonebot-plugin-epicfree)（MIT License）的设计与实现，可以在 .example\nonebot-plugin-epicfree-main 下面速查。核心功能包括：
-
-| 功能 | 说明 |
-|------|------|
-| 免费游戏查询 | 调用 Epic Store API 获取当前免费游戏，以合并转发消息格式发送（含封面图、介绍、链接、截止时间） |
-| 定时推送 | 按群/私聊粒度订阅每日推送，可自定义推送时间（HH:MM） |
-| 订阅管理 | 命令式 订阅/取消订阅/查看状态，群内需管理员权限 |
-| 去重推送 | 基于消息内容指纹（MD5 Hash）避免重复推送同一批游戏 |
-| 代理支持 | 支持 HTTP/SOCKS5 代理访问 Epic API（中国大陆用户） |
-| WebUI 管理 | React 前端面板，可视化管理配置、订阅、状态 |
-
-### 消息指令
-
-| 指令 | 权限 | 说明 |
-|------|------|------|
-| `epic喜加一` / `喜加一` | 所有用户 | 获取当前 Epic 免费游戏信息 |
-| `epic订阅 HH:MM` | 管理员 | 为当前群/私聊开启每日定时推送 |
-| `epic取消订阅` | 管理员 | 取消当前群/私聊的推送 |
-| `epic订阅状态` | 所有用户 | 查看当前群/私聊的订阅状态和推送时间 |
+这是一个面向 NapCat 的插件开发模板（TypeScript，ESM），使用 Vite 打包到 `dist/index.mjs` 作为插件入口；包含消息处理、配置管理和 WebUI 支持。
 
 ---
 
@@ -45,22 +21,22 @@ block-beta
     columns 3
 
     block:entry:3
-        A["index.ts (入口)\n生命周期钩子 + 定时任务加载 + WebUI 路由注册 + 事件分发"]
+        A["index.ts (入口)\n生命周期钩子 + WebUI 路由注册 + 事件分发"]
     end
 
     space:3
 
     block:middle:3
         columns 3
-        B["Handlers\n消息命令处理"]
-        C["Services\nEpic API / 定时任务 / 订阅管理"]
-        D["WebUI\n前端管理界面"]
+        B["Handlers\n消息处理入口"]
+        C["Services\n业务逻辑"]
+        D["WebUI\n前端界面"]
     end
 
     space:3
 
     block:state:3
-        E["core/state\n全局状态单例 + 配置持久化"]
+        E["core/state\n全局状态单例"]
     end
 
     A --> B
@@ -79,10 +55,8 @@ block-beta
 | 模式 | 实现位置 | 说明 |
 |------|----------|------|
 | 单例状态 | `src/core/state.ts` | `pluginState` 全局单例，持有 ctx、config 引用 |
-| 服务分层 | `src/services/*.ts` | Epic API 调用、定时任务管理、订阅持久化 |
+| 服务分层 | `src/services/*.ts` | 按职责拆分业务逻辑 |
 | 配置校验 | `sanitizeConfig()` | 类型安全的运行时配置验证 |
-| 内容去重 | 推送历史指纹 | MD5 Hash 比对，避免重复推送同一批游戏 |
-| 定时调度 | `setInterval` / 定时器管理 | 按订阅配置执行每日推送，`plugin_cleanup` 时清理 |
 
 ---
 
@@ -92,82 +66,33 @@ block-beta
 
 | 文件 | 职责 |
 |------|------|
-| `src/index.ts` | 插件入口：导出生命周期钩子、加载定时推送任务、注册路由、事件分发 |
-| `src/config.ts` | 默认配置 `DEFAULT_CONFIG` 和 WebUI 配置 Schema（含代理配置项） |
+| `src/index.ts` | 插件入口，导出生命周期钩子 (`plugin_init`, `plugin_onmessage`, `plugin_onevent`, `plugin_cleanup`) 和配置管理钩子 |
+| `src/config.ts` | 默认配置 `DEFAULT_CONFIG` 和 WebUI 配置 Schema 构建 (`buildConfigSchema`) |
 
 ### 核心状态
 
 | 文件 | 职责 |
 |------|------|
-| `src/core/state.ts` | 全局状态单例 `pluginState`，管理 ctx 引用、配置持久化、订阅数据、定时器引用 |
-| `src/types.ts` | TypeScript 类型定义（`PluginConfig`, `EpicGame`, `Subscription`, `PushHistory`） |
+| `src/core/state.ts` | 全局状态单例 `pluginState`，管理 ctx 引用、配置持久化、统计信息 |
+| `src/types.ts` | TypeScript 类型定义（`PluginConfig`, `GroupConfig`, `ApiResponse`） |
 
 ### 业务服务
 
 | 文件 | 职责 |
 |------|------|
-| `src/services/epic-api.ts` | 调用 Epic Store 促销 API，解析免费游戏数据，构建合并转发消息 |
-| `src/services/scheduler.ts` | 定时推送任务管理：添加/移除/加载定时器，执行推送逻辑，去重检查 |
-| `src/services/subscription.ts` | 订阅数据持久化：读取/启用/删除订阅，JSON 文件存储 |
-| `src/services/api-service.ts` | WebUI API 路由注册（状态、配置、订阅管理接口） |
+| `src/services/api-service.ts` | WebUI API 路由注册（状态、配置、群管理接口） |
 
 ### 消息处理
 
 | 文件 | 职责 |
 |------|------|
-| `src/handlers/message-handler.ts` | 消息命令处理：`喜加一` 查询、`epic订阅/取消订阅/订阅状态` 命令、权限检查 |
+| `src/handlers/message-handler.ts` | 消息事件入口，命令解析、CD 冷却、消息发送工具 |
 
 ### 前端 WebUI
 
 | 文件 | 职责 |
 |------|------|
-| `src/webui/` | React + Vite 前端项目，管理界面用于配置、订阅管理和状态展示 |
-
----
-
-## 数据流
-
-### Epic 免费游戏查询流程
-
-```mermaid
-flowchart LR
-    A["用户发送 喜加一"] --> B["message-handler\n命令解析"]
-    B --> C["epic-api.ts\n调用 Epic Store API"]
-    C --> D["解析 promotionalOffers\n筛选免费游戏"]
-    D --> E["构建合并转发消息\n封面图+介绍+链接"]
-    E --> F["send_group_forward_msg\n发送到群/私聊"]
-
-    style C fill:#e8f4f8,stroke:#2196F3
-    style E fill:#e8f5e9,stroke:#4CAF50
-```
-
-### 定时推送流程
-
-```mermaid
-flowchart TD
-    A["plugin_init"] --> B["加载 scheduler.json\n恢复所有定时任务"]
-    B --> C["setInterval 定时器\n每分钟检查"]
-    C --> D{"当前时间匹配\n某订阅的推送时间?"}
-    D -->|是| E["调用 epic-api.ts\n获取免费游戏"]
-    E --> F{"内容指纹对比\npush_history.json"}
-    F -->|内容变化| G["推送消息到订阅目标"]
-    F -->|内容相同| H["跳过推送"]
-    D -->|否| C
-    G --> I["更新推送历史"]
-
-    style A fill:#fff3e0,stroke:#FF9800
-    style F fill:#e8f4f8,stroke:#2196F3
-    style G fill:#e8f5e9,stroke:#4CAF50
-```
-
-### 数据文件
-
-| 文件 | 位置 | 说明 |
-|------|------|------|
-| 配置文件 | `ctx.configPath` | 插件配置（代理、权限等），由 NapCat 管理 |
-| `scheduler.json` | `ctx.dataPath` | 定时推送任务配置（`{ "epic_group_123456": "30 8" }`） |
-| `subscriptions.json` | `ctx.dataPath` | 订阅列表（`{ "群聊": ["123456"], "私聊": ["789"] }`） |
-| `push_history.json` | `ctx.dataPath` | 推送历史指纹（`{ "epic_group_123456": "md5hash" }`），用于去重 |
+| `src/webui/` | React + Vite 前端项目，管理界面用于配置和状态展示 |
 
 ---
 
@@ -177,14 +102,14 @@ flowchart TD
 flowchart TD
     A["NapCat 启动"] --> B["扫描 plugins 目录"]
     B --> C["加载插件模块"]
-    C --> D["调用 plugin_init(ctx)\n初始化：加载配置、恢复定时任务、注册路由"]
+    C --> D["调用 plugin_init(ctx)\n初始化：注册路由、加载配置"]
     D --> E["开始监听消息/事件"]
-    E --> F["plugin_onmessage(ctx, event)\n处理 喜加一/订阅/取消订阅 等命令"]
-    E --> G["定时器触发\n执行推送任务"]
+    E --> F["plugin_onmessage(ctx, event)\n收到事件（需判断 post_type）"]
+    E --> G["plugin_onevent(ctx, event)\n收到所有 OneBot 事件"]
     F --> E
     G --> E
     D --> H["插件卸载/重载时"]
-    H --> I["plugin_cleanup(ctx)\n清理：停止所有定时器、保存配置"]
+    H --> I["plugin_cleanup(ctx)\n清理：释放资源、停止定时器"]
 
     style A fill:#e8f4f8,stroke:#2196F3
     style D fill:#fff3e0,stroke:#FF9800
@@ -197,9 +122,10 @@ flowchart TD
 
 | 函数名 | 是否必选 | 说明 |
 |--------|---------|------|
-| `plugin_init` | 必选 | 加载配置、恢复定时推送任务、注册 WebUI 路由 |
-| `plugin_onmessage` | 必选 | 处理喜加一查询、订阅管理、权限检查 |
-| `plugin_cleanup` | 必选 | 清理所有定时器、保存配置和订阅数据 |
+| `plugin_init` | 必选 | 插件加载时调用，初始化资源、注册路由 |
+| `plugin_onmessage` | 可选 | 收到事件时调用（需通过 `event.post_type` 判断事件类型） |
+| `plugin_onevent` | 可选 | 收到所有 OneBot 事件时调用 |
+| `plugin_cleanup` | 可选 | 插件卸载/重载时调用，必须清理资源 |
 | `plugin_config_ui` | 可选 | 导出配置 Schema，用于 WebUI 生成配置面板 |
 | `plugin_get_config` | 可选 | 自定义配置读取 |
 | `plugin_set_config` | 可选 | 自定义配置保存 |
@@ -259,26 +185,66 @@ pnpm run dev:webui
 
 ```bash
 # 一键部署：构建 → 自动复制到远程插件目录 → 自动重载
-pnpm run deploy
+pnpm run push
 
 # 开发模式：watch 构建 + 每次构建后自动部署 + 热重载（单进程）
 pnpm run dev
 ```
 
-> `deploy` = `vite build`（构建完成时 Vite 插件自动部署+重载）  
+> `push` = `vite build`（构建完成时 Vite 插件自动部署+重载）  
 > `dev` = `vite build --watch`（每次重新构建后 Vite 插件自动部署+重载）
 
 ### 配置说明
 
 `vite.config.ts` 中的 `napcatHmrPlugin()` 会在每次 `writeBundle` 时自动：连接调试服务 → 获取远程插件目录 → 复制 dist/ → 调用 reloadPlugin。
 
-如需自定义调试服务地址或 token：
+#### WebUI 监控与自动部署
+
+`napcatHmrPlugin` 支持 `webui` 配置项，可在每次主插件构建完成时自动构建并部署 WebUI 前端产物。本模板已预配置：
 
 ```typescript
 // vite.config.ts
 napcatHmrPlugin({
+    webui: {
+        root: './src/webui',           // WebUI 项目根目录（用于执行构建命令的 cwd）
+        buildCommand: 'pnpm install && pnpm run build',  // 构建命令
+        distDir: './src/webui/dist',   // WebUI 构建产物目录
+        targetDir: 'webui',            // 部署到远程插件目录中的子目录名
+    },
+})
+```
+
+每次 `writeBundle` 时的完整流程：
+1. 连接调试服务（WebSocket）
+2. 获取远程插件目录路径
+3. 复制 `dist/` 主构建产物到远程
+4. 执行 WebUI `buildCommand`（如果配置了）
+5. 复制 WebUI 构建产物到远程插件目录的 `webui/` 子目录
+6. 调用 `reloadPlugin` 热重载插件
+
+如需自定义调试服务地址或 token：
+
+```typescript
+napcatHmrPlugin({
     wsUrl: 'ws://192.168.1.100:8998',
     token: 'mySecret',
+    webui: {
+        root: './src/webui',
+        buildCommand: 'pnpm install && pnpm run build',
+        distDir: './src/webui/dist',
+        targetDir: 'webui',
+    },
+})
+```
+
+如果是纯 HTML 的 WebUI（无需构建），省略 `buildCommand` 即可：
+
+```typescript
+napcatHmrPlugin({
+    webui: {
+        distDir: './webui',
+        targetDir: 'webui',
+    },
 })
 ```
 
@@ -288,11 +254,24 @@ napcatHmrPlugin({
 # 独立运行 CLI，进入交互模式（REPL）
 npx napcat-debug
 
+# 常用参数
+npx napcat-debug ws://host:port     # 指定调试服务地址
+npx napcat-debug -t mySecret        # 带认证 token
+npx napcat-debug -w ./my-plugin     # 监听目录自动热重载
+npx napcat-debug -W                 # 监听远程所有插件
+npx napcat-debug -d [dir]           # 部署插件到远程并重载
+
 # 交互命令
-debug> list              # 列出所有插件
-debug> deploy            # 部署当前目录插件
+debug> list              # 列出所有插件及其状态
 debug> reload <id>       # 重载指定插件
-debug> status            # 查看服务状态
+debug> load <id>         # 加载指定插件
+debug> unload <id>       # 卸载指定插件
+debug> info <id>         # 查看插件详细信息
+debug> deploy [dir]      # 部署插件到远程并重载
+debug> watch <dir>       # 开始监听目录
+debug> unwatch           # 停止监听
+debug> status            # 查看调试服务状态
+debug> ping              # 心跳测试
 ```
 
 ---
@@ -446,6 +425,60 @@ const schema = ctx.NapCatConfig.combine(
   // 错误：使用 emoji
   // <span>✅</span>
   ```
+
+### 模板字符串与反引号安全
+
+> **模板字符串内禁止出现未转义的反引号，含反引号的文本（如颜文字表情）必须使用字符串拼接或转义处理。**
+
+在使用模板字符串（反引号 `` ` `` 包裹的字符串）时，严禁在字符串内容中出现未转义的反引号字符。部分颜文字包含反引号（如 `` (；′⌒`) ``、`` (`ω´) ``），其中的 `` ` `` 会被解析器误认为模板字符串的结束符，导致字符串提前闭合，后续代码作用域和结构全部错乱。
+
+处理方式：
+
+```typescript
+// 正确：字符串拼接
+ctx.logger.warn("(；′⌒`) 任务 " + jobId + " 已移除");
+
+// 正确：转义反引号
+ctx.logger.warn(`(；′⌒\`) 任务 ${jobId} 已移除`);
+
+// 错误：未转义的反引号，会导致语法错误！
+// ctx.logger.warn(`(；′⌒`) 任务 ${jobId} 已移除`);
+```
+
+**安全的颜文字**（不含反引号，可直接用于模板字符串）：
+
+```typescript
+ctx.logger.info(`(｡･ω･｡) 处理完成`);       // 安全
+ctx.logger.error(`(╥﹏╥) 连接失败`);          // 安全
+ctx.logger.info(`(≧▽≦) 启动成功`);           // 安全
+```
+
+**含反引号的颜文字**（必须转义或拼接）：
+
+```typescript
+ctx.logger.warn("(；′⌒`) 配置项缺失");       // 拼接方式
+ctx.logger.warn(`(；′⌒\`) 配置项缺失`);      // 转义方式
+```
+
+### WebUI 前端开发风格
+
+- **主题色**：统一使用粉色系（`primary: #FB7299`），参考 `tailwind.config.js` 中的 `brand` 色阶（`brand-50` ~ `brand-900`）
+- **禁止渐变配色**：不要使用 CSS 渐变（`linear-gradient`、`radial-gradient` 等）作为背景或装饰。使用纯色代替
+- **延续现有风格**：新增页面和组件应与现有 WebUI 保持一致的设计语言：
+  - 卡片使用 `.card` 样式类（白底圆角 + 细边框 + 微阴影）
+  - 激活态/选中态使用 `bg-primary text-white`
+  - 按钮高亮使用 `bg-primary hover:bg-brand-600`
+  - 暗色模式使用 `dark:bg-[#1e1e20]` 等已有暗色变量
+  - 阴影使用 `rgba(251, 114, 153, 0.3)` 等粉色系阴影
+- **配色速查**：
+
+  | 用途 | 色值 | Tailwind class |
+  |------|------|----------------|
+  | 主色 | `#FB7299` | `bg-primary` / `text-primary` |
+  | 浅粉背景 | `#fff1f3` | `bg-brand-50` |
+  | 悬浮态 | `#e05a80` | `bg-brand-600` |
+  | 深粉强调 | `#c4446a` | `bg-brand-700` |
+  | 粉色阴影 | `rgba(251,114,153,0.3)` | 自定义 `box-shadow` |
 
 ---
 

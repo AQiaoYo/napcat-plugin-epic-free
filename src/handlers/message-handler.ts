@@ -1,66 +1,28 @@
 /**
  * 消息处理器
  *
- * 处理接收到的 QQ 消息事件，包含：
- * - 命令解析与分发
- * - CD 冷却管理
- * - 消息发送工具函数
- *
- * 最佳实践：将不同类型的业务逻辑拆分到不同的 handler 文件中，
- * 保持每个文件职责单一。
+ * 处理 Epic 喜加一相关命令：
+ * - 喜加一 / epic喜加一  → 查询当前免费游戏
+ * - epic订阅 HH:MM      → 开启每日定时推送
+ * - epic取消订阅         → 取消推送
+ * - epic订阅状态         → 查看订阅状态
  */
 
 import type { OB11Message, OB11PostSendMsg } from 'napcat-types/napcat-onebot';
 import type { NapCatPluginContext } from 'napcat-types/napcat-onebot/network/plugin/types';
 import { pluginState } from '../core/state';
-
-// ==================== CD 冷却管理 ====================
-
-/** CD 冷却记录 key: `${groupId}:${command}`, value: 过期时间戳 */
-const cooldownMap = new Map<string, number>();
-
-/**
- * 检查是否在 CD 中
- * @returns 剩余秒数，0 表示可用
- */
-function getCooldownRemaining(groupId: number | string, command: string): number {
-    const cdSeconds = pluginState.config.cooldownSeconds ?? 60;
-    if (cdSeconds <= 0) return 0;
-
-    const key = `${groupId}:${command}`;
-    const expireTime = cooldownMap.get(key);
-    if (!expireTime) return 0;
-
-    const remaining = Math.ceil((expireTime - Date.now()) / 1000);
-    if (remaining <= 0) {
-        cooldownMap.delete(key);
-        return 0;
-    }
-    return remaining;
-}
-
-/** 设置 CD 冷却 */
-function setCooldown(groupId: number | string, command: string): void {
-    const cdSeconds = pluginState.config.cooldownSeconds ?? 60;
-    if (cdSeconds <= 0) return;
-    cooldownMap.set(`${groupId}:${command}`, Date.now() + cdSeconds * 1000);
-}
+import { getJobId, getSubInfo, subscribeHelper } from '../services/subscription';
+import { addScheduledJob, removeScheduledJob, schedulerManage, sendEpicFreeToTarget } from '../services/scheduler';
+import type { SubscriptionData } from '../types';
 
 // ==================== 消息发送工具 ====================
 
-/**
- * 发送消息（通用）
- * 根据消息类型自动发送到群或私聊
- *
- * @param ctx 插件上下文
- * @param event 原始消息事件（用于推断回复目标）
- * @param message 消息内容（支持字符串或消息段数组）
- */
-export async function sendReply(
+/** 发送回复（自动判断群/私聊） */
+async function sendReply(
     ctx: NapCatPluginContext,
     event: OB11Message,
-    message: OB11PostSendMsg['message']
-): Promise<boolean> {
+    message: string,
+): Promise<void> {
     try {
         const params: OB11PostSendMsg = {
             message,
@@ -73,131 +35,132 @@ export async function sendReply(
                 : {}),
         };
         await ctx.actions.call('send_msg', params, ctx.adapterName, ctx.pluginManager.config);
-        return true;
     } catch (error) {
-        pluginState.logger.error('发送消息失败:', error);
-        return false;
+        pluginState.logger.error('(╥﹏╥) 发送消息失败:', error);
     }
 }
 
-/**
- * 发送群消息
- */
-export async function sendGroupMessage(
-    ctx: NapCatPluginContext,
-    groupId: number | string,
-    message: OB11PostSendMsg['message']
-): Promise<boolean> {
-    try {
-        const params: OB11PostSendMsg = {
-            message,
-            message_type: 'group',
-            group_id: String(groupId),
-        };
-        await ctx.actions.call('send_msg', params, ctx.adapterName, ctx.pluginManager.config);
-        return true;
-    } catch (error) {
-        pluginState.logger.error('发送群消息失败:', error);
-        return false;
-    }
-}
+// ==================== 权限检查 ====================
 
-/**
- * 发送私聊消息
- */
-export async function sendPrivateMessage(
-    ctx: NapCatPluginContext,
-    userId: number | string,
-    message: OB11PostSendMsg['message']
-): Promise<boolean> {
-    try {
-        const params: OB11PostSendMsg = {
-            message,
-            message_type: 'private',
-            user_id: String(userId),
-        };
-        await ctx.actions.call('send_msg', params, ctx.adapterName, ctx.pluginManager.config);
-        return true;
-    } catch (error) {
-        pluginState.logger.error('发送私聊消息失败:', error);
-        return false;
-    }
+/** 检查群聊中是否有管理员权限 */
+function isAdmin(event: OB11Message): boolean {
+    if (event.message_type !== 'group') return true; // 私聊不需要检查权限
+    const role = (event.sender as Record<string, unknown>)?.role;
+    return role === 'admin' || role === 'owner';
 }
 
 // ==================== 消息处理主函数 ====================
 
-/**
- * 消息处理主函数
- * 在这里实现你的命令处理逻辑
- */
 export async function handleMessage(ctx: NapCatPluginContext, event: OB11Message): Promise<void> {
     try {
-        const rawMessage = event.raw_message || '';
+        const rawMessage = (event.raw_message || '').trim();
         const messageType = event.message_type;
-        const groupId = event.group_id;
-        const userId = event.user_id;
+        const groupId = event.group_id as number | undefined;
+        const userId = event.user_id as number | undefined;
 
-        pluginState.ctx.logger.debug(`收到消息: ${rawMessage} | 类型: ${messageType}`);
+        // (epic)喜加一 / 喜+1 等
+        if (/^(epic)?喜(\+|＋|加)(一|1)$/.test(rawMessage)) {
+            pluginState.logger.info(`(｡·ω·｡) 收到喜加一查询请求 | 类型: ${messageType}`);
 
-        // 群消息：检查该群是否启用
-        if (messageType === 'group' && groupId) {
-            if (!pluginState.isGroupEnabled(String(groupId))) return;
+            const subInfo = getSubInfo(messageType, groupId, userId);
+            try {
+                await sendEpicFreeToTarget(subInfo);
+            } catch (e) {
+                pluginState.logger.error('(╥﹏╥) 查询 Epic 免费游戏失败:', e);
+                await sendReply(ctx, event, 'Epic 免费游戏查询失败了..请稍后再试 (；′⌒`)');
+            }
+            return;
         }
 
-        // 检查命令前缀
-        const prefix = pluginState.config.commandPrefix || '#cmd';
-        if (!rawMessage.startsWith(prefix)) return;
-
-        // 解析命令参数
-        const args = rawMessage.slice(prefix.length).trim().split(/\s+/);
-        const subCommand = args[0]?.toLowerCase() || '';
-
-        // TODO: 在这里实现你的命令处理逻辑
-        switch (subCommand) {
-            case 'help': {
-                const helpText = [
-                    `📖 插件帮助`,
-                    `${prefix} help - 显示帮助信息`,
-                    `${prefix} ping - 测试连通性`,
-                    `${prefix} status - 查看运行状态`,
-                ].join('\n');
-                await sendReply(ctx, event, helpText);
-                break;
+        // epic订阅 HH:MM
+        if (/^epic订阅\s/.test(rawMessage)) {
+            if (!isAdmin(event)) {
+                await sendReply(ctx, event, '只有群管理员才能操作订阅哦~');
+                return;
             }
 
-            case 'ping': {
-                // 群消息检查 CD
-                if (messageType === 'group' && groupId) {
-                    const remaining = getCooldownRemaining(groupId, 'ping');
-                    if (remaining > 0) {
-                        await sendReply(ctx, event, `⏳ 请等待 ${remaining} 秒后再试`);
-                        return;
-                    }
-                }
-
-                await sendReply(ctx, event, '🏓 pong!');
-                if (messageType === 'group' && groupId) setCooldown(groupId, 'ping');
-                pluginState.incrementProcessed();
-                break;
+            const timeStr = rawMessage.replace(/^epic订阅\s*/, '').trim();
+            if (!timeStr) {
+                await sendReply(ctx, event, '请提供订阅时间，格式为 HH:MM，例如 epic订阅 8:30');
+                return;
             }
 
-            case 'status': {
-                const statusText = [
-                    `📊 插件状态`,
-                    `运行时长: ${pluginState.getUptimeFormatted()}`,
-                    `今日处理: ${pluginState.stats.todayProcessed}`,
-                    `总计处理: ${pluginState.stats.processed}`,
-                ].join('\n');
-                await sendReply(ctx, event, statusText);
-                break;
+            const timeParts = timeStr.split(':');
+            if (timeParts.length !== 2) {
+                await sendReply(ctx, event, '时间格式不正确~ 请使用 HH:MM 格式，例如 epic订阅 8:30');
+                return;
             }
 
-            default: {
-                // TODO: 在这里处理你的主要命令逻辑
-                break;
+            const hour = parseInt(timeParts[0], 10);
+            const minute = parseInt(timeParts[1], 10);
+
+            if (isNaN(hour) || isNaN(minute) || hour < 0 || hour > 23 || minute < 0 || minute > 59) {
+                await sendReply(ctx, event, '时间格式不正确~ 请使用 HH:MM 格式，例如 epic订阅 8:30');
+                return;
             }
+
+            const subInfo = getSubInfo(messageType, groupId, userId);
+            const jobId = getJobId(messageType, groupId, userId);
+
+            // 1. 更新订阅者列表
+            subscribeHelper('启用', subInfo.sub_type, subInfo.subject);
+            // 2. 添加定时任务
+            addScheduledJob(jobId, hour, minute, subInfo);
+
+            await sendReply(ctx, event,
+                `已成功为本${subInfo.sub_type}开启 Epic 每日推送，时间: ${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`
+            );
+            return;
+        }
+
+        // epic取消订阅
+        if (/^(epic取消订阅|取消epic订阅)$/.test(rawMessage)) {
+            if (!isAdmin(event)) {
+                await sendReply(ctx, event, '只有群管理员才能操作订阅哦~');
+                return;
+            }
+
+            const subInfo = getSubInfo(messageType, groupId, userId);
+            const jobId = getJobId(messageType, groupId, userId);
+
+            // 1. 从订阅者列表删除
+            subscribeHelper('删除', subInfo.sub_type, subInfo.subject);
+            // 2. 移除定时任务
+            removeScheduledJob(jobId);
+
+            await sendReply(ctx, event, `已为本${subInfo.sub_type}取消 Epic 每日推送`);
+            return;
+        }
+
+        // epic订阅状态
+        if (/^(epic订阅状态|epic推送状态)$/.test(rawMessage)) {
+            const subInfo = getSubInfo(messageType, groupId, userId);
+            const jobId = getJobId(messageType, groupId, userId);
+
+            // 检查是否在订阅列表中
+            const allSubs = subscribeHelper('读取') as SubscriptionData;
+            if (!allSubs[subInfo.sub_type]?.includes(subInfo.subject)) {
+                await sendReply(ctx, event, `本${subInfo.sub_type}当前未订阅 Epic 推送`);
+                return;
+            }
+
+            // 获取定时任务配置
+            const schedInfo = schedulerManage(jobId, 'get');
+            if (schedInfo) {
+                const [minuteStr, hourStr] = schedInfo.split(' ');
+                const hour = parseInt(hourStr, 10);
+                const minute = parseInt(minuteStr, 10);
+                await sendReply(ctx, event,
+                    `本${subInfo.sub_type}已订阅 Epic 推送，每日推送时间为: ${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`
+                );
+            } else {
+                await sendReply(ctx, event,
+                    `本${subInfo.sub_type}已订阅，但未找到推送时间设置。请使用 epic取消订阅 后重新订阅`
+                );
+            }
+            return;
         }
     } catch (error) {
-        pluginState.logger.error('处理消息时出错:', error);
+        pluginState.logger.error('(╥﹏╥) 处理消息时出错:', error);
     }
 }
