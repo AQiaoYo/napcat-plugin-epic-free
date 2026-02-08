@@ -9,7 +9,7 @@ import { pluginState } from '../core/state';
 import type { EpicGameRaw, ForwardNode } from '../types';
 
 const EPIC_API_URL = 'https://store-site-backend-static-ipv4.ak.epicgames.com/freeGamesPromotions';
-const EPIC_NICKNAME = 'EpicGameStore';
+const EPIC_NICKNAME = 'Epic 喜加一';
 
 /**
  * 创建一个合并转发消息节点
@@ -19,7 +19,7 @@ function createNode(content: Array<{ type: string; data: Record<string, unknown>
         type: 'node',
         data: {
             nickname: EPIC_NICKNAME,
-            user_id: '2854196320',
+            user_id: pluginState.selfId || '10000',
             content,
         },
     };

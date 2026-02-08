@@ -40,6 +40,9 @@ class PluginState {
     config: PluginConfig = { ...DEFAULT_CONFIG };
     startTime: number = 0;
 
+    /** 机器人自身 QQ 号 */
+    selfId: string = '';
+
     /** 活跃的定时器 Map: jobId -> NodeJS.Timeout */
     timers: Map<string, ReturnType<typeof setInterval>> = new Map();
 
@@ -80,6 +83,23 @@ class PluginState {
         this.loadConfig();
         // 确保数据目录存在
         this.ensureDataDir();
+        // 异步获取机器人 QQ 号
+        this.fetchSelfId();
+    }
+
+    /** 获取机器人自身 QQ 号 */
+    private async fetchSelfId(): Promise<void> {
+        try {
+            const res = await this.ctx.actions.call(
+                'get_login_info', void 0, this.ctx.adapterName, this.ctx.pluginManager.config
+            ) as { user_id?: number | string };
+            if (res?.user_id) {
+                this.selfId = String(res.user_id);
+                this.logger.debug("(｡·ω·｡) 机器人 QQ: " + this.selfId);
+            }
+        } catch (e) {
+            this.logger.warn("(；′⌒`) 获取机器人 QQ 号失败:", e);
+        }
     }
 
     cleanup(): void {
