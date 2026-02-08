@@ -43,6 +43,24 @@ class PluginState {
     /** 活跃的定时器 Map: jobId -> NodeJS.Timeout */
     timers: Map<string, ReturnType<typeof setInterval>> = new Map();
 
+    /** 运行时统计数据 */
+    stats: { processed: number; todayProcessed: number; lastUpdateDay: string } = {
+        processed: 0,
+        todayProcessed: 0,
+        lastUpdateDay: '',
+    };
+
+    /** 递增处理计数 */
+    incrementProcessed(): void {
+        const today = new Date().toISOString().slice(0, 10);
+        if (this.stats.lastUpdateDay !== today) {
+            this.stats.todayProcessed = 0;
+            this.stats.lastUpdateDay = today;
+        }
+        this.stats.processed++;
+        this.stats.todayProcessed++;
+    }
+
     /** 获取上下文 */
     get ctx(): NapCatPluginContext {
         if (!this._ctx) throw new Error('PluginState 尚未初始化，请先调用 init()');
