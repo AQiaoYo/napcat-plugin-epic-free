@@ -1,4 +1,4 @@
-# Copilot Instructions for NapCat Plugin Template
+# Copilot Instructions for napcat-plugin-epic-free
 
 ## 目标
 
@@ -8,7 +8,31 @@
 
 ## 一句话概览
 
-这是一个面向 NapCat 的插件开发模板（TypeScript，ESM），使用 Vite 打包到 `dist/index.mjs` 作为插件入口；包含消息处理、配置管理和 WebUI 支持。
+这是一个面向 NapCat 的 Epic Games Store 喜加一推送插件（TypeScript，ESM），使用 Vite 打包到 `dist/index.mjs` 作为插件入口；提供免费游戏查询、定时推送、订阅管理等功能，含 WebUI 管理界面。
+
+---
+
+## 功能概览
+
+本插件参考了 [nonebot-plugin-epicfree](https://github.com/FlanChanXwO/nonebot-plugin-epicfree)（MIT License）的设计与实现，可以在 .example\nonebot-plugin-epicfree-main 下面速查。核心功能包括：
+
+| 功能 | 说明 |
+|------|------|
+| 免费游戏查询 | 调用 Epic Store API 获取当前免费游戏，以合并转发消息格式发送（含封面图、介绍、链接、截止时间） |
+| 定时推送 | 按群/私聊粒度订阅每日推送，可自定义推送时间（HH:MM） |
+| 订阅管理 | 命令式 订阅/取消订阅/查看状态，群内需管理员权限 |
+| 去重推送 | 基于消息内容指纹（MD5 Hash）避免重复推送同一批游戏 |
+| 代理支持 | 支持 HTTP/SOCKS5 代理访问 Epic API（中国大陆用户） |
+| WebUI 管理 | React 前端面板，可视化管理配置、订阅、状态 |
+
+### 消息指令
+
+| 指令 | 权限 | 说明 |
+|------|------|------|
+| `epic喜加一` / `喜加一` | 所有用户 | 获取当前 Epic 免费游戏信息 |
+| `epic订阅 HH:MM` | 管理员 | 为当前群/私聊开启每日定时推送 |
+| `epic取消订阅` | 管理员 | 取消当前群/私聊的推送 |
+| `epic订阅状态` | 所有用户 | 查看当前群/私聊的订阅状态和推送时间 |
 
 ---
 
@@ -21,22 +45,22 @@ block-beta
     columns 3
 
     block:entry:3
-        A["index.ts (入口)\n生命周期钩子 + WebUI 路由注册 + 事件分发"]
+        A["index.ts (入口)\n生命周期钩子 + 定时任务加载 + WebUI 路由注册 + 事件分发"]
     end
 
     space:3
 
     block:middle:3
         columns 3
-        B["Handlers\n消息处理入口"]
-        C["Services\n业务逻辑"]
-        D["WebUI\n前端界面"]
+        B["Handlers\n消息命令处理"]
+        C["Services\nEpic API / 定时任务 / 订阅管理"]
+        D["WebUI\n前端管理界面"]
     end
 
     space:3
 
     block:state:3
-        E["core/state\n全局状态单例"]
+        E["core/state\n全局状态单例 + 配置持久化"]
     end
 
     A --> B
@@ -55,8 +79,10 @@ block-beta
 | 模式 | 实现位置 | 说明 |
 |------|----------|------|
 | 单例状态 | `src/core/state.ts` | `pluginState` 全局单例，持有 ctx、config 引用 |
-| 服务分层 | `src/services/*.ts` | 按职责拆分业务逻辑 |
+| 服务分层 | `src/services/*.ts` | Epic API 调用、定时任务管理、订阅持久化 |
 | 配置校验 | `sanitizeConfig()` | 类型安全的运行时配置验证 |
+| 内容去重 | 推送历史指纹 | MD5 Hash 比对，避免重复推送同一批游戏 |
+| 定时调度 | `setInterval` / 定时器管理 | 按订阅配置执行每日推送，`plugin_cleanup` 时清理 |
 
 ---
 
@@ -66,33 +92,82 @@ block-beta
 
 | 文件 | 职责 |
 |------|------|
-| `src/index.ts` | 插件入口，导出生命周期钩子 (`plugin_init`, `plugin_onmessage`, `plugin_onevent`, `plugin_cleanup`) 和配置管理钩子 |
-| `src/config.ts` | 默认配置 `DEFAULT_CONFIG` 和 WebUI 配置 Schema 构建 (`buildConfigSchema`) |
+| `src/index.ts` | 插件入口：导出生命周期钩子、加载定时推送任务、注册路由、事件分发 |
+| `src/config.ts` | 默认配置 `DEFAULT_CONFIG` 和 WebUI 配置 Schema（含代理配置项） |
 
 ### 核心状态
 
 | 文件 | 职责 |
 |------|------|
-| `src/core/state.ts` | 全局状态单例 `pluginState`，管理 ctx 引用、配置持久化、统计信息 |
-| `src/types.ts` | TypeScript 类型定义（`PluginConfig`, `GroupConfig`, `ApiResponse`） |
+| `src/core/state.ts` | 全局状态单例 `pluginState`，管理 ctx 引用、配置持久化、订阅数据、定时器引用 |
+| `src/types.ts` | TypeScript 类型定义（`PluginConfig`, `EpicGame`, `Subscription`, `PushHistory`） |
 
 ### 业务服务
 
 | 文件 | 职责 |
 |------|------|
-| `src/services/api-service.ts` | WebUI API 路由注册（状态、配置、群管理接口） |
+| `src/services/epic-api.ts` | 调用 Epic Store 促销 API，解析免费游戏数据，构建合并转发消息 |
+| `src/services/scheduler.ts` | 定时推送任务管理：添加/移除/加载定时器，执行推送逻辑，去重检查 |
+| `src/services/subscription.ts` | 订阅数据持久化：读取/启用/删除订阅，JSON 文件存储 |
+| `src/services/api-service.ts` | WebUI API 路由注册（状态、配置、订阅管理接口） |
 
 ### 消息处理
 
 | 文件 | 职责 |
 |------|------|
-| `src/handlers/message-handler.ts` | 消息事件入口，命令解析、CD 冷却、消息发送工具 |
+| `src/handlers/message-handler.ts` | 消息命令处理：`喜加一` 查询、`epic订阅/取消订阅/订阅状态` 命令、权限检查 |
 
 ### 前端 WebUI
 
 | 文件 | 职责 |
 |------|------|
-| `src/webui/` | React + Vite 前端项目，管理界面用于配置和状态展示 |
+| `src/webui/` | React + Vite 前端项目，管理界面用于配置、订阅管理和状态展示 |
+
+---
+
+## 数据流
+
+### Epic 免费游戏查询流程
+
+```mermaid
+flowchart LR
+    A["用户发送 喜加一"] --> B["message-handler\n命令解析"]
+    B --> C["epic-api.ts\n调用 Epic Store API"]
+    C --> D["解析 promotionalOffers\n筛选免费游戏"]
+    D --> E["构建合并转发消息\n封面图+介绍+链接"]
+    E --> F["send_group_forward_msg\n发送到群/私聊"]
+
+    style C fill:#e8f4f8,stroke:#2196F3
+    style E fill:#e8f5e9,stroke:#4CAF50
+```
+
+### 定时推送流程
+
+```mermaid
+flowchart TD
+    A["plugin_init"] --> B["加载 scheduler.json\n恢复所有定时任务"]
+    B --> C["setInterval 定时器\n每分钟检查"]
+    C --> D{"当前时间匹配\n某订阅的推送时间?"}
+    D -->|是| E["调用 epic-api.ts\n获取免费游戏"]
+    E --> F{"内容指纹对比\npush_history.json"}
+    F -->|内容变化| G["推送消息到订阅目标"]
+    F -->|内容相同| H["跳过推送"]
+    D -->|否| C
+    G --> I["更新推送历史"]
+
+    style A fill:#fff3e0,stroke:#FF9800
+    style F fill:#e8f4f8,stroke:#2196F3
+    style G fill:#e8f5e9,stroke:#4CAF50
+```
+
+### 数据文件
+
+| 文件 | 位置 | 说明 |
+|------|------|------|
+| 配置文件 | `ctx.configPath` | 插件配置（代理、权限等），由 NapCat 管理 |
+| `scheduler.json` | `ctx.dataPath` | 定时推送任务配置（`{ "epic_group_123456": "30 8" }`） |
+| `subscriptions.json` | `ctx.dataPath` | 订阅列表（`{ "群聊": ["123456"], "私聊": ["789"] }`） |
+| `push_history.json` | `ctx.dataPath` | 推送历史指纹（`{ "epic_group_123456": "md5hash" }`），用于去重 |
 
 ---
 
@@ -102,14 +177,14 @@ block-beta
 flowchart TD
     A["NapCat 启动"] --> B["扫描 plugins 目录"]
     B --> C["加载插件模块"]
-    C --> D["调用 plugin_init(ctx)\n初始化：注册路由、加载配置"]
+    C --> D["调用 plugin_init(ctx)\n初始化：加载配置、恢复定时任务、注册路由"]
     D --> E["开始监听消息/事件"]
-    E --> F["plugin_onmessage(ctx, event)\n收到事件（需判断 post_type）"]
-    E --> G["plugin_onevent(ctx, event)\n收到所有 OneBot 事件"]
+    E --> F["plugin_onmessage(ctx, event)\n处理 喜加一/订阅/取消订阅 等命令"]
+    E --> G["定时器触发\n执行推送任务"]
     F --> E
     G --> E
     D --> H["插件卸载/重载时"]
-    H --> I["plugin_cleanup(ctx)\n清理：释放资源、停止定时器"]
+    H --> I["plugin_cleanup(ctx)\n清理：停止所有定时器、保存配置"]
 
     style A fill:#e8f4f8,stroke:#2196F3
     style D fill:#fff3e0,stroke:#FF9800
@@ -122,10 +197,9 @@ flowchart TD
 
 | 函数名 | 是否必选 | 说明 |
 |--------|---------|------|
-| `plugin_init` | 必选 | 插件加载时调用，初始化资源、注册路由 |
-| `plugin_onmessage` | 可选 | 收到事件时调用（需通过 `event.post_type` 判断事件类型） |
-| `plugin_onevent` | 可选 | 收到所有 OneBot 事件时调用 |
-| `plugin_cleanup` | 可选 | 插件卸载/重载时调用，必须清理资源 |
+| `plugin_init` | 必选 | 加载配置、恢复定时推送任务、注册 WebUI 路由 |
+| `plugin_onmessage` | 必选 | 处理喜加一查询、订阅管理、权限检查 |
+| `plugin_cleanup` | 必选 | 清理所有定时器、保存配置和订阅数据 |
 | `plugin_config_ui` | 可选 | 导出配置 Schema，用于 WebUI 生成配置面板 |
 | `plugin_get_config` | 可选 | 自定义配置读取 |
 | `plugin_set_config` | 可选 | 自定义配置保存 |

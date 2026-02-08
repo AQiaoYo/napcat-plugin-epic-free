@@ -1,24 +1,27 @@
 {
-  "name": "napcat-plugin-template",
-  "plugin": "插件模板",
+  "name": "napcat-plugin-epic-free",
+  "plugin": "Epic喜加一",
   "version": "1.0.0",
   "type": "module",
   "main": "index.mjs",
-  "description": "NapCat 插件开发模板 - 快速开始你的插件开发",
-  "author": "Your Name",
+  "description": "Epic Games Store 每周免费游戏订阅推送插件",
+  "author": "AQiaoYo",
   "license": "MIT",
   "keywords": [
     "napcat",
     "plugin",
     "qq",
-    "template"
+    "epic",
+    "free-games",
+    "epic-games-store"
   ],
   "napcat": {
     "tags": [
-      "工具"
+      "订阅",
+      "游戏"
     ],
     "minVersion": "4.14.0",
-    "homepage": ""
+    "homepage": "https://github.com/AQiaoYo/napcat-plugin-epic-free"
   },
   "dependencies": {
     "napcat-types": "0.0.16"
