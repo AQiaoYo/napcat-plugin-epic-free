@@ -8,6 +8,7 @@ import type {
 } from 'napcat-types/napcat-onebot/network/plugin/types';
 import { pluginState } from '../core/state';
 import { subscribeHelper } from './subscription';
+import { addScheduledJob, removeScheduledJob } from './scheduler';
 
 /**
  * 注册 API 路由
@@ -72,7 +73,7 @@ export function registerApiRoutes(ctx: NapCatPluginContext): void {
 
     // ==================== 群管理 ====================
 
-    /** 获取群列表（合并订阅状态） */
+    /** 获取群列表（合并订阅状态和推送时间） */
     router.getNoAuth('/groups', async (_req, res) => {
         try {
             const result = await ctx.actions.call(
@@ -84,14 +85,29 @@ export function registerApiRoutes(ctx: NapCatPluginContext): void {
 
             const subs = pluginState.loadSubscriptions();
             const subscribedGroups = new Set(subs['群聊']);
+            const schedulerData = pluginState.loadSchedulerData();
 
-            const groups = (result || []).map((g) => ({
-                group_id: g.group_id,
-                group_name: g.group_name,
-                member_count: g.member_count,
-                max_member_count: g.max_member_count,
-                enabled: subscribedGroups.has(String(g.group_id)),
-            }));
+            const groups = (result || []).map((g) => {
+                const jobId = 'epic_group_' + g.group_id;
+                const cronTime = schedulerData[jobId]; // "minute hour"
+                let scheduleTime: string | null = null;
+                if (cronTime) {
+                    const [minuteStr, hourStr] = cronTime.split(' ');
+                    const hour = parseInt(hourStr, 10);
+                    const minute = parseInt(minuteStr, 10);
+                    if (!isNaN(hour) && !isNaN(minute)) {
+                        scheduleTime = hour.toString().padStart(2, '0') + ':' + minute.toString().padStart(2, '0');
+                    }
+                }
+                return {
+                    group_id: g.group_id,
+                    group_name: g.group_name,
+                    member_count: g.member_count,
+                    max_member_count: g.max_member_count,
+                    enabled: subscribedGroups.has(String(g.group_id)),
+                    scheduleTime,
+                };
+            });
 
             res.json({ code: 0, data: groups });
         } catch (e) {
@@ -104,18 +120,66 @@ export function registerApiRoutes(ctx: NapCatPluginContext): void {
     router.postNoAuth('/groups/:groupId/config', async (req, res) => {
         try {
             const groupId = req.params.groupId;
-            const body = req.body as { enabled?: boolean } | undefined;
+            const body = req.body as { enabled?: boolean; scheduleTime?: string | null } | undefined;
             if (!body || typeof body.enabled !== 'boolean') {
                 return res.status(400).json({ code: -1, message: '参数错误' });
             }
+
+            const jobId = 'epic_group_' + groupId;
+
             if (body.enabled) {
                 subscribeHelper('启用', '群聊', groupId);
+                // 如果提供了推送时间，设置定时任务
+                if (body.scheduleTime) {
+                    const [hourStr, minuteStr] = body.scheduleTime.split(':');
+                    const hour = parseInt(hourStr, 10);
+                    const minute = parseInt(minuteStr, 10);
+                    if (!isNaN(hour) && !isNaN(minute) && hour >= 0 && hour <= 23 && minute >= 0 && minute <= 59) {
+                        addScheduledJob(jobId, hour, minute, { sub_type: '群聊', subject: groupId });
+                    }
+                }
             } else {
                 subscribeHelper('删除', '群聊', groupId);
+                // 禁用时同时移除定时任务
+                removeScheduledJob(jobId);
             }
             res.json({ code: 0, message: 'ok' });
         } catch (e) {
             ctx.logger.error('(╥﹏╥) 群配置更新失败:', e);
+            res.status(500).json({ code: -1, message: String(e) });
+        }
+    });
+
+    /** 单群设置/更新推送时间 */
+    router.postNoAuth('/groups/:groupId/schedule', async (req, res) => {
+        try {
+            const groupId = req.params.groupId;
+            const body = req.body as { time?: string | null } | undefined;
+            if (!body) {
+                return res.status(400).json({ code: -1, message: '参数错误' });
+            }
+
+            const jobId = 'epic_group_' + groupId;
+
+            if (body.time) {
+                // 设置/更新推送时间
+                const [hourStr, minuteStr] = body.time.split(':');
+                const hour = parseInt(hourStr, 10);
+                const minute = parseInt(minuteStr, 10);
+                if (isNaN(hour) || isNaN(minute) || hour < 0 || hour > 23 || minute < 0 || minute > 59) {
+                    return res.status(400).json({ code: -1, message: '时间格式错误，请使用 HH:MM' });
+                }
+                // 确保群在订阅列表中
+                subscribeHelper('启用', '群聊', groupId);
+                addScheduledJob(jobId, hour, minute, { sub_type: '群聊', subject: groupId });
+                res.json({ code: 0, message: 'ok' });
+            } else {
+                // 取消推送时间（仅移除定时任务，不取消订阅）
+                removeScheduledJob(jobId);
+                res.json({ code: 0, message: 'ok' });
+            }
+        } catch (e) {
+            ctx.logger.error('(╥﹏╥) 群推送时间设置失败:', e);
             res.status(500).json({ code: -1, message: String(e) });
         }
     });
@@ -128,10 +192,13 @@ export function registerApiRoutes(ctx: NapCatPluginContext): void {
                 return res.status(400).json({ code: -1, message: '参数错误' });
             }
             for (const gid of body.groupIds) {
+                const groupId = String(gid);
                 if (body.enabled) {
-                    subscribeHelper('启用', '群聊', String(gid));
+                    subscribeHelper('启用', '群聊', groupId);
                 } else {
-                    subscribeHelper('删除', '群聊', String(gid));
+                    subscribeHelper('删除', '群聊', groupId);
+                    // 禁用时同时移除定时任务
+                    removeScheduledJob('epic_group_' + groupId);
                 }
             }
             res.json({ code: 0, message: 'ok' });
