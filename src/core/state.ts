@@ -91,7 +91,7 @@ class PluginState {
     private async fetchSelfId(): Promise<void> {
         try {
             const res = await this.ctx.actions.call(
-                'get_login_info', void 0, this.ctx.adapterName, this.ctx.pluginManager.config
+                'get_login_info', {}, this.ctx.adapterName, this.ctx.pluginManager.config
             ) as { user_id?: number | string };
             if (res?.user_id) {
                 this.selfId = String(res.user_id);
