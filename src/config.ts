@@ -23,9 +23,9 @@ export const DEFAULT_CONFIG: PluginConfig = {
 export function buildConfigSchema(ctx: NapCatPluginContext): PluginConfigSchema {
     return ctx.NapCatConfig.combine(
         ctx.NapCatConfig.html(`
-            <div style="padding: 16px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 12px; margin-bottom: 20px; color: white;">
-                <h3 style="margin: 0 0 8px 0; font-size: 18px; font-weight: bold;">Epic 喜加一</h3>
-                <p style="margin: 0; font-size: 14px; opacity: 0.9;">Epic Games Store 每周免费游戏订阅推送插件</p>
+            <div style="padding: 16px; background: #FB7299; border-radius: 12px; margin-bottom: 20px; color: white;">
+                <h3 style="margin: 0 0 6px 0; font-size: 18px; font-weight: 600;">Epic 喜加一</h3>
+                <p style="margin: 0; font-size: 13px; opacity: 0.85;">Epic Games Store 每周免费游戏订阅推送插件</p>
             </div>
         `),
         ctx.NapCatConfig.boolean('enabled', '启用插件', true, '是否启用此插件的功能'),
