@@ -13,7 +13,7 @@ export type PageId = 'status' | 'config' | 'groups'
 const pageConfig: Record<PageId, { title: string; desc: string }> = {
     status: { title: '仪表盘', desc: '插件运行状态与数据概览' },
     config: { title: '插件配置', desc: '基础设置与参数配置' },
-    groups: { title: '群管理', desc: '管理群的启用与禁用' },
+    groups: { title: '群管理', desc: '管理群的启用、禁用与定时推送' },
 }
 
 function App() {
@@ -48,7 +48,7 @@ function App() {
             <Sidebar currentPage={currentPage} onPageChange={setCurrentPage} />
 
             <div className="flex-1 flex flex-col overflow-hidden">
-                <main className="flex-1 overflow-y-auto" onScroll={handleScroll}>
+                <main className="flex-1 flex flex-col overflow-hidden">
                     <Header
                         title={pageConfig[currentPage].title}
                         description={pageConfig[currentPage].desc}
@@ -56,8 +56,8 @@ function App() {
                         status={status}
                         currentPage={currentPage}
                     />
-                    <div className="px-4 md:px-8 pb-8">
-                        <div key={currentPage} className="page-enter">
+                    <div className={`px-4 md:px-8 pb-8 flex-1 min-h-0 ${currentPage === 'groups' ? 'flex flex-col' : 'overflow-y-auto'}`} onScroll={handleScroll}>
+                        <div key={currentPage} className={`page-enter ${currentPage === 'groups' ? 'flex-1 min-h-0 flex flex-col' : ''}`}>
                             {renderPage()}
                         </div>
                     </div>

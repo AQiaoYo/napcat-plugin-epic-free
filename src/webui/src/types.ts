@@ -32,6 +32,7 @@ export interface GroupInfo {
     member_count: number
     max_member_count: number
     enabled: boolean
+    scheduleTime: string | null
 }
 
 export interface ApiResponse<T = unknown> {

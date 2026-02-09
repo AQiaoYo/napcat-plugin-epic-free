@@ -105,7 +105,9 @@ body {
 
 /* ========== Input ========== */
 .input-field {
-    @apply w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#1e1e20] text-gray-900 dark:text-white text-sm;
+    @apply w-full py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#1e1e20] text-gray-900 dark:text-white text-sm;
+    padding-left: 0.75rem;
+    padding-right: 0.75rem;
     transition: border-color 0.2s var(--ease-smooth), box-shadow 0.2s var(--ease-smooth);
 }
 

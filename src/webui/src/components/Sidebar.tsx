@@ -1,5 +1,5 @@
 import type { PageId } from '../App'
-import { IconDashboard, IconSettings, IconGroup, IconGithub, IconPlugin, IconSun } from './icons'
+import { IconDashboard, IconSettings, IconGroup, IconGithub, IconGamepad, IconSun } from './icons'
 
 interface SidebarProps {
     currentPage: PageId
@@ -18,10 +18,10 @@ export default function Sidebar({ currentPage, onPageChange }: SidebarProps) {
             {/* Logo */}
             <div className="px-5 py-6 flex items-center gap-3">
                 <div className="sidebar-logo w-8 h-8 flex items-center justify-center bg-brand-500 rounded-lg text-white">
-                    <IconPlugin size={18} />
+                    <IconGamepad size={18} />
                 </div>
                 <div>
-                    <h1 className="font-bold text-sm leading-tight text-gray-900 dark:text-white">Plugin Template</h1>
+                    <h1 className="font-bold text-sm leading-tight text-gray-900 dark:text-white">Epic 喜加一</h1>
                     <p className="text-[10px] text-gray-400 font-medium tracking-wider">NAPCAT PLUGIN</p>
                 </div>
             </div>
@@ -43,7 +43,7 @@ export default function Sidebar({ currentPage, onPageChange }: SidebarProps) {
             {/* Footer */}
             <div className="px-3 pb-2">
                 <a
-                    href="https://github.com"
+                    href="https://github.com/AQiaoYo/napcat-plugin-epic-free"
                     target="_blank"
                     rel="noopener noreferrer"
                     className="sidebar-item no-underline"
