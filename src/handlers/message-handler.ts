@@ -58,6 +58,20 @@ export async function handleMessage(ctx: NapCatPluginContext, event: OB11Message
         const groupId = event.group_id as number | undefined;
         const userId = event.user_id as number | undefined;
 
+        // 群聊消息：检查该群是否已启用（在订阅列表中）
+        // 未启用的群仅允许 epic订阅 命令（用于首次开启）
+        if (messageType === 'group' && groupId) {
+            const subs = subscribeHelper('读取') as SubscriptionData;
+            const isGroupEnabled = subs['群聊']?.includes(String(groupId));
+            if (!isGroupEnabled) {
+                // 未启用的群只放行订阅命令，其他一律忽略
+                if (!/^epic订阅\s/.test(rawMessage)) {
+                    return;
+                }
+            }
+        }
+
+
         // (epic)喜加一 / 喜+1 等
         if (/^(epic)?喜(\+|＋|加)(一|1)$/.test(rawMessage)) {
             pluginState.logger.info(`(｡·ω·｡) 收到喜加一查询请求 | 类型: ${messageType}`);
