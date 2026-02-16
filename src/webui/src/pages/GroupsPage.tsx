@@ -169,10 +169,18 @@ export default function GroupsPage() {
             {/* 群列表 */}
             <div className="card overflow-hidden animate-fade-in-up flex-1 min-h-0 flex flex-col">
                 <div className="sticky top-0 z-10">
-                    <table className="w-full text-sm">
+                    <table className="w-full text-sm table-fixed">
+                        <colgroup>
+                            <col className="w-[48px]" />
+                            <col className="w-[30%]" />
+                            <col className="w-[20%]" />
+                            <col className="w-[12%]" />
+                            <col className="w-[22%]" />
+                            <col className="w-[16%]" />
+                        </colgroup>
                         <thead>
                             <tr className="text-left text-xs text-gray-400 border-b border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-white/[0.02]">
-                                <th className="py-2.5 px-4 font-medium w-10">
+                                <th className="py-2.5 px-4 font-medium">
                                     <input
                                         type="checkbox"
                                         checked={selectAll}
@@ -190,7 +198,15 @@ export default function GroupsPage() {
                     </table>
                 </div>
                 <div className="flex-1 overflow-y-auto min-h-0">
-                    <table className="w-full text-sm">
+                    <table className="w-full text-sm table-fixed">
+                        <colgroup>
+                            <col className="w-[48px]" />
+                            <col className="w-[30%]" />
+                            <col className="w-[20%]" />
+                            <col className="w-[12%]" />
+                            <col className="w-[22%]" />
+                            <col className="w-[16%]" />
+                        </colgroup>
                         <tbody className="divide-y divide-gray-50 dark:divide-gray-800/50">
                             {filtered.map((group) => {
                                 const isEditing = editingSchedule[group.group_id] !== undefined
